@@ -120,6 +120,16 @@ def main():
     )
     args = parser.parse_args()
 
+    # Set global single-user mode flag early to influence config loading
+    if args.single_user:
+        if is_stateless_mode():
+            safe_print("❌ Single-user mode is incompatible with stateless mode")
+            safe_print("   Stateless mode requires OAuth 2.1 which is multi-user")
+            sys.exit(1)
+        os.environ["MCP_SINGLE_USER_MODE"] = "1"
+        # Reload config to apply single user mode setting to OAuthConfig
+        reload_oauth_config()
+
     # Set port and base URI once for reuse throughout the function
     port = int(os.getenv("PORT", os.getenv("WORKSPACE_MCP_PORT", 8000)))
     base_uri = os.getenv("WORKSPACE_MCP_BASE_URI", "http://localhost")
@@ -264,13 +274,7 @@ def main():
     safe_print(f"   📝 Log Level: {logging.getLogger().getEffectiveLevel()}")
     safe_print("")
 
-    # Set global single-user mode flag
     if args.single_user:
-        if is_stateless_mode():
-            safe_print("❌ Single-user mode is incompatible with stateless mode")
-            safe_print("   Stateless mode requires OAuth 2.1 which is multi-user")
-            sys.exit(1)
-        os.environ["MCP_SINGLE_USER_MODE"] = "1"
         safe_print("🔐 Single-user mode enabled")
         safe_print("")
 

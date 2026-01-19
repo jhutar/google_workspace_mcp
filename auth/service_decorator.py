@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 
 import re
 from functools import wraps
@@ -526,7 +527,10 @@ def require_google_service(
 
         # Create a new signature for the wrapper that excludes the 'service' parameter.
         # In OAuth 2.1 mode, also exclude 'user_google_email' since it's automatically determined.
-        if is_oauth21_enabled():
+        # In Single User Mode, also exclude 'user_google_email' to make it optional in schema.
+        is_single_user = os.getenv("MCP_SINGLE_USER_MODE") == "1"
+
+        if is_oauth21_enabled() or is_single_user:
             # Remove both 'service' and 'user_google_email' parameters
             filtered_params = [p for p in params[1:] if p.name != "user_google_email"]
             wrapper_sig = original_sig.replace(parameters=filtered_params)
@@ -549,6 +553,10 @@ def require_google_service(
                 user_google_email = _extract_oauth21_user_email(
                     authenticated_user, func.__name__
                 )
+            elif is_single_user:
+                # In single user mode, user_google_email is optional (hidden from schema)
+                # We can try to get it from kwargs if passed (e.g. explicitly), or default to None
+                user_google_email = kwargs.get("user_google_email")
             else:
                 user_google_email = _extract_oauth20_user_email(
                     args, kwargs, wrapper_sig
@@ -614,7 +622,7 @@ def require_google_service(
 
             try:
                 # In OAuth 2.1 mode, we need to add user_google_email to kwargs since it was removed from signature
-                if is_oauth21_enabled():
+                if is_oauth21_enabled() or is_single_user:
                     kwargs["user_google_email"] = user_google_email
 
                 # Prepend the fetched service object to the original arguments
@@ -629,9 +637,9 @@ def require_google_service(
         wrapper.__signature__ = wrapper_sig
 
         # Conditionally modify docstring to remove user_google_email parameter documentation
-        if is_oauth21_enabled():
+        if is_oauth21_enabled() or is_single_user:
             logger.debug(
-                "OAuth 2.1 mode enabled, removing user_google_email from docstring"
+                "OAuth 2.1 or Single User mode enabled, removing user_google_email from docstring"
             )
             if func.__doc__:
                 wrapper.__doc__ = _remove_user_email_arg_from_docstring(func.__doc__)
@@ -669,7 +677,10 @@ def require_multiple_services(service_configs: List[Dict[str, Any]]):
 
         # Remove injected service params from the wrapper signature; drop user_google_email only for OAuth 2.1.
         filtered_params = [p for p in params if p.name not in service_param_names]
-        if is_oauth21_enabled():
+
+        is_single_user = os.getenv("MCP_SINGLE_USER_MODE") == "1"
+
+        if is_oauth21_enabled() or is_single_user:
             filtered_params = [
                 p for p in filtered_params if p.name != "user_google_email"
             ]
@@ -688,6 +699,8 @@ def require_multiple_services(service_configs: List[Dict[str, Any]]):
                 user_google_email = _extract_oauth21_user_email(
                     authenticated_user, tool_name
                 )
+            elif is_single_user:
+                user_google_email = kwargs.get("user_google_email")
             else:
                 user_google_email = _extract_oauth20_user_email(
                     args, kwargs, wrapper_sig
@@ -752,7 +765,7 @@ def require_multiple_services(service_configs: List[Dict[str, Any]]):
             # Call the original function with refresh error handling
             try:
                 # In OAuth 2.1 mode, we need to add user_google_email to kwargs since it was removed from signature
-                if is_oauth21_enabled():
+                if is_oauth21_enabled() or is_single_user:
                     kwargs["user_google_email"] = user_google_email
 
                 return await func(*args, **kwargs)
@@ -767,9 +780,9 @@ def require_multiple_services(service_configs: List[Dict[str, Any]]):
         wrapper.__signature__ = wrapper_sig
 
         # Conditionally modify docstring to remove user_google_email parameter documentation
-        if is_oauth21_enabled():
+        if is_oauth21_enabled() or is_single_user:
             logger.debug(
-                "OAuth 2.1 mode enabled, removing user_google_email from docstring"
+                "OAuth 2.1 or Single User mode enabled, removing user_google_email from docstring"
             )
             if func.__doc__:
                 wrapper.__doc__ = _remove_user_email_arg_from_docstring(func.__doc__)

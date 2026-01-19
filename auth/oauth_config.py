@@ -36,9 +36,17 @@ class OAuthConfig:
         self.client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
         # OAuth 2.1 configuration
+        # Disable OAuth 2.1 if Single User Mode is active
+        self.single_user_mode = os.getenv("MCP_SINGLE_USER_MODE", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         self.oauth21_enabled = (
             os.getenv("MCP_ENABLE_OAUTH21", "false").lower() == "true"
-        )
+        ) and not self.single_user_mode
+
         self.pkce_required = self.oauth21_enabled  # PKCE is mandatory in OAuth 2.1
         self.supported_code_challenge_methods = (
             ["S256", "plain"] if not self.oauth21_enabled else ["S256"]

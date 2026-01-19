@@ -849,11 +849,16 @@ async def get_authenticated_google_service(
         f"[{tool_name}] Attempting to get authenticated {service_name} service. Email: '{user_google_email}', Session: '{session_id}'"
     )
 
-    # Validate email format
-    if not user_google_email or "@" not in user_google_email:
+    # Validate email format (unless single-user mode, where it can be None)
+    is_single_user = os.getenv("MCP_SINGLE_USER_MODE") == "1"
+    if not is_single_user and (not user_google_email or "@" not in user_google_email):
         error_msg = f"Authentication required for {tool_name}. No valid 'user_google_email' provided. Please provide a valid Google email address."
         logger.info(f"[{tool_name}] {error_msg}")
         raise GoogleAuthenticationError(error_msg)
+    elif is_single_user and not user_google_email:
+        logger.debug(
+            f"[{tool_name}] Single-user mode: user_google_email is None, will try to find any credentials."
+        )
 
     credentials = await asyncio.to_thread(
         get_credentials,
@@ -870,6 +875,18 @@ async def get_authenticated_google_service(
         logger.info(
             f"[{tool_name}] Valid email '{user_google_email}' provided, initiating auth flow."
         )
+
+        # In single user mode without an email, we need one to start auth flow
+        if is_single_user and not user_google_email:
+            # Try to get default email from env
+            from core.config import USER_GOOGLE_EMAIL
+
+            if USER_GOOGLE_EMAIL:
+                user_google_email = USER_GOOGLE_EMAIL
+            else:
+                error_msg = f"Authentication required for {tool_name} in Single User Mode. No credentials found and no 'USER_GOOGLE_EMAIL' environment variable set. Please set USER_GOOGLE_EMAIL or provide email in the tool call to initiate authentication."
+                logger.error(f"[{tool_name}] {error_msg}")
+                raise GoogleAuthenticationError(error_msg)
 
         # Ensure OAuth callback is available
         from auth.oauth_callback_server import ensure_oauth_callback_available
